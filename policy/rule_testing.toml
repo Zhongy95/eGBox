@@ -1,0 +1,187 @@
+profile = '/bin/ls'
+
+[[net]]
+access = "Send"
+action = ["allow"]
+uid = -1
+gid = -1
+[[fs]]
+pathname = "/"
+uid = 1001
+gid = -1
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/"
+uid = -1
+gid = 1004
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 1004
+gid = 1004
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/"
+uid = 1000
+gid = -1
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/"
+uid = -1
+gid = 1003
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 1003
+gid = -1
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 0
+gid = -1
+access = "r"
+action = ["allow"]
+[[net]]
+access = "Server"
+action = ["allow"]
+uid = -1
+gid = -1
+[[fs]]
+pathname = "/*"
+uid = 1000
+gid = 1000
+access = "r"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 1002
+gid = 1002
+access = "any"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = -1
+gid = 1005
+access = "r"
+action = ["allow"]
+[[net]]
+access = "Client"
+action = ["allow"]
+uid = -1
+gid = 1004
+[[net]]
+access = "any"
+action = ["allow"]
+uid = 1003
+gid = -1
+[[fs]]
+pathname = "/*"
+uid = 1001
+gid = 1001
+access = "any"
+action = ["allow"]
+[[fs]]
+pathname = "/sudo/ts/file_boy"
+uid = 0
+gid = -1
+access = "any"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = -1
+gid = 1004
+access = "l"
+action = ["allow"]
+[[net]]
+access = "Client"
+action = ["allow"]
+uid = 0
+gid = -1
+[[net]]
+access = "Client"
+action = ["allow"]
+uid = 1002
+gid = -1
+[[fs]]
+pathname = "/*"
+uid = 1004
+gid = -1
+access = "w"
+action = ["allow"]
+[[net]]
+access = "Client"
+action = ["allow"]
+uid = -1
+gid = 1001
+[[fs]]
+pathname = "/*"
+uid = 0
+gid = -1
+access = "c"
+action = ["allow"]
+[[fs]]
+pathname = "/tmp/pip-ephem-wheel-cache-qaq90_ea"
+uid = 0
+gid = -1
+access = "d"
+action = ["allow"]
+[[fs]]
+pathname = "/"
+uid = 1004
+gid = 1004
+access = "any"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = -1
+gid = 1005
+access = "c"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = -1
+gid = 1004
+access = "d"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = -1
+gid = 1005
+access = "w"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 0
+gid = 0
+access = "d"
+action = ["allow"]
+[[fs]]
+pathname = "/"
+uid = -1
+gid = 115
+access = "any"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 0
+gid = -1
+access = "w"
+action = ["allow"]
+[[fs]]
+pathname = "/*"
+uid = 1003
+gid = 1003
+access = "w"
+action = ["allow"]
+[[fs]]
+pathname = "/tmp/sh-thd.MJ1Dyk"
+uid = -1
+gid = 1003
+access = "c"
+action = ["allow"]

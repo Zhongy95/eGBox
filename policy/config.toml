@@ -1,0 +1,41 @@
+profile = '/bin/ls'
+
+[[fs]]
+action = ['allow','taint']
+access = 'rw'
+pathname = '/home/user'
+uid = 0
+
+
+[[fs]]
+action = ['allow','taint']
+access = 'rw'
+pathname = '/home/user'
+uid = 1000
+
+[[fs]]
+action = ['allow']
+access = 'rw'
+pathname = '/'
+uid = 0
+
+#[[fs]]
+#action = ['audit']
+#access = 'any'
+#pathname = '/etc/passwd'
+#uid = 0
+#
+#
+#
+#[[fs]]
+#action = ['allow']
+#access = 'rw'
+#pathname = '/home'
+#uid = -1
+#
+#
+#[[net]]
+#action = ['allow','audit']
+#access = ['recv','send','server']
+#uid = 0
+#
