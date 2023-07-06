@@ -1,3 +1,0 @@
-/home/user/work/bpfesx/cmake-build-debug/CMakeFiles/bpfesx.dir
-/home/user/work/bpfesx/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/user/work/bpfesx/cmake-build-debug/CMakeFiles/rebuild_cache.dir

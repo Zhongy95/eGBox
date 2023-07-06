@@ -39,9 +39,10 @@ uname = "0.1.1"
 tempfile = "3.3.0"
 fp-growth = "0.1"
 time = "0.3.15"
-bson = { version = "2", features = ["chrono-0_4"] } # Needed for using chrono datetime in doc
+chrono = "0.4.26" # Used for setting DateTimes
+bson = { version = "2.6.1", features = ["chrono-0_4"] } # Needed for using chrono datetime in doc
 tokio = "1.26.0"
-chrono = "0.4" # Used for setting DateTimes
+
 futures = "0.3"
 rand = "0.8.5"
 [dependencies.mongodb]
