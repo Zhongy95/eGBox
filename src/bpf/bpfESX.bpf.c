@@ -27,18 +27,18 @@
  * BPF CO-RE Globals                                                         *
  * ========================================================================= */
 
-// TODO: Your global variables here
+static const struct path_t empty_path = {"\0"};
+static const char split[2] ="/";
 
+int mprotect_count = 0;
+u8 audit_mode = 0;
+u64 config_id = 0 ;
+u32 esx_pid = 0;
+
+struct fs_audit_event_t _fs_audit_event={0} ;
 /* ========================================================================= *
  * BPF Maps                                                                  *
  * ========================================================================= */
-struct
-{
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(key_size, sizeof(struct fs_policy_key_t));
-    __uint(value_size, sizeof(struct policy_t));
-    __uint(max_entries, MAX_POLICY_SIZE);
-} fs_policy SEC(".maps");
 
 struct
 {
@@ -47,6 +47,14 @@ struct
     __uint(value_size, sizeof(struct policy_t));
     __uint(max_entries, MAX_POLICY_SIZE);
 } fs_policies SEC(".maps");
+
+struct
+{
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(key_size, sizeof(struct fs_policy_key));
+    __uint(value_size, sizeof(struct policy_t));
+    __uint(max_entries, MAX_POLICY_SIZE);
+} fs_dir_policies SEC(".maps");
 
 struct
 {
@@ -167,15 +175,7 @@ struct{
     __uint(max_entries, 32000);
 } pid_binary_context SEC(".maps");
 
-static const struct path_t empty_path = {"\0"};
-static const char split[2] ="/";
 
-int mprotect_count = 0;
-
-u64 config_id = 0 ;
-u32 esx_pid = 0;
-
-struct fs_audit_event_t _fs_audit_event={0} ;
 /* ========================================================================= *
  * Kernel-Dependent Helpers                                                  *
  * ========================================================================= */
@@ -572,18 +572,6 @@ static __always_inline void audit_fs(u32 pid, enum action_t action, struct inode
 
 
 
-//static __always_inline enum action_t fs_policy_decision(struct process_t *process, struct inode *inode, enum fs_access_t access)
-//{
-//    u64 profile_key = inode->i_ino | (u32)inode->i_sb->s_dev;
-//    struct fs_policy_key_t key = {
-//        .st_dev = (u64)inode->i_sb->s_dev,
-//        .config_id = process->config_id,
-//    };
-//
-//    struct policy_t *policy = bpf_map_lookup_elem(&fs_policy, &key);
-//    return policy_decision(process, policy, access);
-//}
-
 static __always_inline u64 calculate_profile_key(u64 st_ino,u64 st_dev)
 {
     return (st_ino | (st_dev <<16));
@@ -591,29 +579,80 @@ static __always_inline u64 calculate_profile_key(u64 st_ino,u64 st_dev)
 
 
 
+static __always_inline struct fs_policy_key create_fs_policy_key(struct inode *inode)
+{
+    u64 profile_keyt = calculate_profile_key((u64)(inode->i_ino),(u64)(new_encode_dev(inode->i_sb->s_dev)));
+    u64 ugid = bpf_get_current_uid_gid();
+    u32 uid = ugid & 0xFFFFFFFF;
+    struct fs_policy_key key = {
+            .config_id= config_id,
+            .device_id = (u64)(new_encode_dev(inode->i_sb->s_dev)),
+            .profile_key = profile_keyt,
+            .uid = uid,
+    };
+    return key;
+}
 
-static __always_inline enum action_t fs_policy_decision(struct inode *inode, enum fs_access_t access)
+static __always_inline enum action_t fs_dir_policy_decision(enum fs_access_t access,struct dentry *dent)
+{
+    struct dentry *dir_dent = dent->d_parent;
+    struct inode* dir_inode = dir_dent->d_inode;
+    struct fs_policy_key key = create_fs_policy_key(dir_inode);
+    struct policy_t *dir_fs_policy = bpf_map_lookup_elem(&fs_dir_policies,&key);
+    // if dir is added, then return result
+    if (dir_fs_policy){
+        return policy_decision(dir_fs_policy,access);
+    }
+
+    if (dir_dent == dent){
+        // already loop to root
+        return 0;
+    }
+
+    return 0;
+}
+
+static __always_inline enum action_t fs_policy_decision(struct inode *inode, enum fs_access_t access,struct dentry *dent)
 {
     u32 pid = bpf_get_current_pid_tgid();
+    // guarantee the privilege of esx
     if (pid == esx_pid)
     {
         return 0;
     }
+
+    // check directory privileged
+    int dir_len = 64;
+    enum action_t dir_action = ACTION_NONE;
+    do{
+        dir_action = fs_dir_policy_decision(access,dent);
+        if(dir_action != ACTION_NONE){
+            return dir_action;
+        }
+        dent = dent->d_parent;
+        dir_len --;
+    }while (dir_len >=0 && dent->d_parent !=dent);
+
+    dir_action = fs_dir_policy_decision(access,dent);
+    if(dir_action != ACTION_NONE){
+        return dir_action;
+    }
+
     u64 profile_keyt = calculate_profile_key((u64)(inode->i_ino),(u64)(new_encode_dev(inode->i_sb->s_dev)
                                                                                                     ));
     u64 profile_key_all = 0;
     u64 ugid = bpf_get_current_uid_gid();
     u32 gid = ugid >> 32;
     u32 uid = ugid & 0xFFFFFFFF;
+    struct fs_policy_key key = create_fs_policy_key(inode);
 
 
-
-    struct fs_policy_key key = {
-        .config_id= config_id,
-        .device_id = (u64)(new_encode_dev(inode->i_sb->s_dev)),
-        .profile_key = profile_keyt,
-        .uid = uid,
-    };
+//    struct fs_policy_key key = {
+//        .config_id= config_id,
+//        .device_id = (u64)(new_encode_dev(inode->i_sb->s_dev)),
+//        .profile_key = profile_keyt,
+//        .uid = uid,
+//    };
     s32 topuid = -1;
     u32 u_topuid = (u32)topuid;
     struct fs_policy_key keyal = {
@@ -655,7 +694,8 @@ static __always_inline enum action_t fs_policy_decision(struct inode *inode, enu
 static __always_inline void get_fullpath_dent(struct dentry *dent)
 {
     struct dentry *dentmp = dent;
-    struct inode *inode = dent->d_inode;
+
+    struct inode *inode = dentmp->d_inode;
     u64 profile_key = calculate_profile_key((u64)(inode->i_ino),(u64)(new_encode_dev(inode->i_sb->s_dev)));
     struct path_t *patht = bpf_map_lookup_elem(&paths,&profile_key);
     if(patht)
@@ -670,15 +710,14 @@ static __always_inline void get_fullpath_dent(struct dentry *dent)
     path->st_dev = (u64)(new_encode_dev(inode->i_sb->s_dev));
     path->pathsize = 0;
     path->count = 0;
-    int ret = 0;
-    char buffert[DNAME_INLINE_LEN];
+    long ret = 0;
+//    char buffert[DNAME_INLINE_LEN];
     if(dentmp->d_iname!=NULL)
     {
-
         ret = bpf_probe_read_kernel_str(path->fullpath,DNAME_INLINE_LEN,dentmp->d_iname);
 
         path->pathsize += (ret-1);
-
+        // the directory maximum here is set as 256, maybe longer in future
         if(path->pathsize>=0 && path->pathsize<256)
         {
             ret = bpf_probe_read_str(&path->fullpath[path->pathsize],DNAME_INLINE_LEN,&split);
@@ -688,10 +727,25 @@ static __always_inline void get_fullpath_dent(struct dentry *dent)
         path->pathsize++;
         path->count ++;
         int count = 1;
-        while((dentmp->d_parent != dentmp)&&(count<60))
-        {
-            bpf_probe_read_kernel_str(buffert,sizeof(buffert),(dentmp->d_iname));
-            dentmp = dentmp->d_parent;
+
+
+        do {
+//            bpf_probe_read_kernel_str(buffert,DNAME_INLINE_LEN,dentmp->d_iname);
+//            if(dentmp==NULL){
+//                break;
+//            }
+//            struct dentry* dentparent = dentmp->d_parent;
+//            if (dentparent ==NULL){
+//                break;
+//            }
+//
+//            if(dentmp == (struct dentry*)dentmp->d_parent){
+//                break;
+//            }
+//            if (dentmp != dentmp->d_parent){
+//                dentmp = dentparent;
+//            }
+            dentmp = (struct dentry *)dentmp->d_parent;
 
             if(!dentmp->d_iname)
                break;
@@ -712,10 +766,14 @@ static __always_inline void get_fullpath_dent(struct dentry *dent)
             path->count++;
             count++;
 //            bpf_printk("path name section:%s,ret=%d,count=%d",buffert,ret,count);
-        }
+        }while(count<60 && dentmp != dentmp->d_parent);
 //        bpf_printk("full path namenew:%s,length = %d",&path->fullpath,path->pathsize);
     }
 }
+
+
+
+
 static __always_inline void audit_fs1(u32 pid, enum action_t action, struct dentry *dentry,enum fs_access_t access)
 {
 //    FILTER_AUDIT(action);
@@ -803,7 +861,7 @@ int BPF_PROG(inode_create, struct inode *dir, struct dentry *dentry)
         return 0;
     }
 
-    enum action_t action = fs_policy_decision( dir, FS_WRITE);
+    enum action_t action = fs_policy_decision( dir, FS_WRITE,dentry);
     enum fs_access_t access = FS_WRITE;
 
     audit_fs1(pid,action,dentry,access);
@@ -822,7 +880,7 @@ int BPF_PROG(inode_symlink, struct inode *dir, struct dentry *dentry)
         return 0;
     }
 
-    enum action_t action = fs_policy_decision( dir, FS_WRITE);
+    enum action_t action = fs_policy_decision( dir, FS_WRITE,dentry);
 //    audit_fs(pid, action, dir, FS_WRITE);
     enum fs_access_t access = FS_WRITE;
 
@@ -842,7 +900,7 @@ int BPF_PROG(inode_mkdir,struct inode *dir,struct dentry *dentry)
         return 0;
     }
 
-    enum action_t action = fs_policy_decision(dir,FS_WRITE);
+    enum action_t action = fs_policy_decision(dir,FS_WRITE,dentry);
 
     enum fs_access_t access = FS_WRITE;
 
@@ -862,7 +920,7 @@ int BPF_PROG(inode_rmdir,struct inode *dir,struct dentry *dentry)
     if(!process){
         return 0;
     }
-    enum action_t action = fs_policy_decision(dir,FS_DELETE);
+    enum action_t action = fs_policy_decision(dir,FS_DELETE,dentry);
 //    audit_fs(pid,action,dir,FS_DELETE);
     enum fs_access_t access = FS_DELETE;
 
@@ -884,7 +942,7 @@ int BPF_PROG(inode_link,struct dentry *old_dentry,struct inode *dir,struct dentr
         return 0;
     }
 
-     enum action_t action = fs_policy_decision(dir,FS_WRITE);
+     enum action_t action = fs_policy_decision(dir,FS_WRITE,old_dentry);
      audit_fs(pid,action,dir,FS_WRITE);
      if(action & ACTION_DENY){
         return -EPERM;
@@ -892,7 +950,7 @@ int BPF_PROG(inode_link,struct dentry *old_dentry,struct inode *dir,struct dentr
 
      struct inode *old_inode = old_dentry->d_inode;
 
-     action = fs_policy_decision(old_inode,FS_LINK);
+     action = fs_policy_decision(old_inode,FS_LINK,old_dentry);
      audit_fs(pid,action,old_inode,FS_LINK);
      enum fs_access_t access = FS_LINK;
 
@@ -905,7 +963,6 @@ SEC("lsm/inode_unlink")
 int BPF_PROG(inode_unlink,  struct inode *dir, struct dentry *dentry)
 {
     u32 pid = bpf_get_current_pid_tgid();
-
     //only monitor process triggered by SSH session
     struct process_t *process = get_process(pid);
     if(!process){
@@ -913,7 +970,7 @@ int BPF_PROG(inode_unlink,  struct inode *dir, struct dentry *dentry)
     }
 
 
-    enum action_t action = fs_policy_decision(dir,FS_WRITE);
+    enum action_t action = fs_policy_decision(dir,FS_WRITE,dentry);
     audit_fs(pid,action,dir,FS_WRITE);
     if(action & ACTION_DENY){
         return -EPERM;
@@ -921,7 +978,7 @@ int BPF_PROG(inode_unlink,  struct inode *dir, struct dentry *dentry)
 
     struct inode *inode = dentry->d_inode;
     
-    action = fs_policy_decision( inode, FS_DELETE);
+    action = fs_policy_decision( inode, FS_DELETE,dentry);
 //    audit_fs(pid, action, inode, FS_DELETE);
 
     enum fs_access_t access = FS_DELETE;
@@ -944,7 +1001,7 @@ int BPF_PROG(inode_setattr,struct dentry *dentry)
 
     struct inode *inode = dentry->d_inode;
 
-    enum action_t action = fs_policy_decision(inode,FS_CHMOD);
+    enum action_t action = fs_policy_decision(inode,FS_CHMOD,dentry);
 //    audit_fs(pid,action,inode,FS_CHMOD);
     enum fs_access_t access = FS_CHMOD;
 
@@ -969,7 +1026,7 @@ int BPF_PROG(inode_setxattr,struct user_namespace *mnt_userns,struct dentry *den
 
     struct inode *inode = dentry->d_inode;
 
-    enum action_t action = fs_policy_decision(inode,FS_CHMOD);
+    enum action_t action = fs_policy_decision(inode,FS_CHMOD,dentry);
 //    audit_fs(pid,action,inode,FS_CHMOD);
     enum fs_access_t access = FS_CHMOD;
 
@@ -1000,7 +1057,7 @@ int BPF_PROG(inode_getattr,struct path *path)
     if(inode == NULL)
         return 0;
     enum fs_access_t access = FS_GETATTR;
-    enum action_t action = fs_policy_decision(inode,FS_GETATTR);
+    enum action_t action = fs_policy_decision(inode,FS_GETATTR,path->dentry);
 //    audit_fs(pid,action,inode,FS_GETATTR);
     audit_fs1(pid,action,path->dentry,access);
 
@@ -1071,135 +1128,135 @@ int BPF_PROG(inode_getattr,struct path *path)
 //    return 0;
 //}
 
-SEC("lsm/file_permission")
-int BPF_PROG(forbid_inode_create, struct file *file, int mask, int ret)
-{
-    __u64 ugid = bpf_get_current_uid_gid();
-    __u32 gid = ugid >> 32;
-    __u32 uid = ugid & 0xFFFFFFFF;
-
-    if (ret != 0 || uid == 0)
-        return ret;
-
-    u64 st_ino = (u64)file->f_path.dentry->d_inode->i_ino;
-    u64 st_dev = (new_encode_dev(file->f_path.dentry->d_inode->i_sb->s_dev)
-                              );
-
-
-    st_dev = st_dev << 16;
-    u64 profile_key = st_ino | st_dev;
-
-//    if(uid !=1000)
-//        return 0;
-
-
-
-    __u32 pid = bpf_get_current_pid_tgid() >> 32;
-    // struct task_struct *task_ptr = (struct task_struct *)bpf_get_current_task();
-
-//    char match_name[] = "ls";
-//    char path_name[20] = {};
-//    bpf_get_current_comm(path_name, sizeof(path_name));
-//    for (int i = 0; i < sizeof(match_name); i++)
-//    {
-//        if (path_name[i] != match_name[i])
-//        {
-//            return 0;
-//        }
-//    }
-//    if(profile_key != 138346498)
-//            return 0;
-
-    enum action_t action = fs_policy_decision(file->f_path.dentry->d_inode,FS_READ);
-    //bpf_printk("file permission %d,st_ino %d,action = ",profile_key,st_ino,action);
-    audit_fs(pid, action, file->f_path.dentry->d_inode, FS_READ);
-//    if(profile_key == 138346498)
-//        return -EPERM;
-
-
-//    bpf_printk("uid:%d(%d)\t mask:%d", uid, gid, mask);
-//    bpf_printk("pid:%d,name:%s", pid, path_name);
-//    bpf_printk("filename:%s,fmode:%x", file->f_path.dentry->d_name.name, file->f_mode);
-//    bpf_printk("iname:%s", file->f_path.dentry->d_iname);
-//    bpf_printk("mntname:%s", file->f_path.mnt->mnt_root->d_name.name);
-
-//    if (uid == 1000)
-//    {
-//        return -EPERM;
-//    }
-
-mismatch:
-    // bpf_printk("pid:%d,name:%s", pid, path_name);
-    return 0;
-}
+//SEC("lsm/file_permission")
+//int BPF_PROG(forbid_inode_create, struct file *file, int mask, int ret)
+//{
+//    __u64 ugid = bpf_get_current_uid_gid();
+//    __u32 gid = ugid >> 32;
+//    __u32 uid = ugid & 0xFFFFFFFF;
+//
+//    if (ret != 0 || uid == 0)
+//        return ret;
+//
+//    u64 st_ino = (u64)file->f_path.dentry->d_inode->i_ino;
+//    u64 st_dev = (new_encode_dev(file->f_path.dentry->d_inode->i_sb->s_dev)
+//                              );
+//
+//
+//    st_dev = st_dev << 16;
+//    u64 profile_key = st_ino | st_dev;
+//
+////    if(uid !=1000)
+////        return 0;
+//
+//
+//
+//    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+//    // struct task_struct *task_ptr = (struct task_struct *)bpf_get_current_task();
+//
+////    char match_name[] = "ls";
+////    char path_name[20] = {};
+////    bpf_get_current_comm(path_name, sizeof(path_name));
+////    for (int i = 0; i < sizeof(match_name); i++)
+////    {
+////        if (path_name[i] != match_name[i])
+////        {
+////            return 0;
+////        }
+////    }
+////    if(profile_key != 138346498)
+////            return 0;
+//
+//    enum action_t action = fs_policy_decision(file->f_path.dentry->d_inode,FS_READ);
+//    //bpf_printk("file permission %d,st_ino %d,action = ",profile_key,st_ino,action);
+//    audit_fs(pid, action, file->f_path.dentry->d_inode, FS_READ);
+////    if(profile_key == 138346498)
+////        return -EPERM;
+//
+//
+////    bpf_printk("uid:%d(%d)\t mask:%d", uid, gid, mask);
+////    bpf_printk("pid:%d,name:%s", pid, path_name);
+////    bpf_printk("filename:%s,fmode:%x", file->f_path.dentry->d_name.name, file->f_mode);
+////    bpf_printk("iname:%s", file->f_path.dentry->d_iname);
+////    bpf_printk("mntname:%s", file->f_path.mnt->mnt_root->d_name.name);
+//
+////    if (uid == 1000)
+////    {
+////        return -EPERM;
+////    }
+//
+//mismatch:
+//    // bpf_printk("pid:%d,name:%s", pid, path_name);
+//    return 0;
+//}
 
 
 /* =========================================================================
  * mmap Policy
  * ========================================================================= */
-SEC("lsm/mmap_file")
-int BPF_PROG(mmap_file, struct file *file, unsigned long reqprot,unsigned long prot, unsigned long flags)
-{
-
-    u32 pid = bpf_get_current_pid_tgid();
-    //only monitor process triggered by SSH session
-    struct process_t *process = get_process(pid);
-    if(!process){
-        return 0;
-    }
-
-    if(!file)
-    {
-        return 0;
-    }
-
-    struct inode *inode = file->f_inode;
-
-    enum fs_access_t access = prot_mask_to_access(prot, (flags & MAP_TYPE) == MAP_SHARED);
-
-    if(!access)
-    {
-        return 0;
-    }
-
-    enum action_t action = fs_policy_decision(inode,access);
-    audit_fs(pid,action,inode,access);
-
-    return action & ACTION_DENY ? -EPERM : 0;
-}
-
-
-SEC("lsm/file_mprotect")
-int BPF_PROG(file_mprotect, struct vm_area_struct *vma, unsigned long reqprot,
-                       unsigned long prot)
-{
-    u32 pid = bpf_get_current_pid_tgid();
-    //only monitor process triggered by SSH session
-    struct process_t *process = get_process(pid);
-    if(!process){
-        return 0;
-    }
-
-    if (!vma) {
-            return 0;
-        }
-
-    struct file *file = vma->vm_file;
-
-    struct inode *inode = file->f_inode;
-
-    enum fs_access_t access = prot_mask_to_access(prot, vma->vm_flags & VM_SHARED);
-
-    if(!access)
-    {
-        return 0;
-    }
-
-    enum action_t action = fs_policy_decision(inode,access);
-    audit_fs(pid,action,inode,access);
-
-    return action & ACTION_DENY ? -EPERM : 0;
-}
+//SEC("lsm/mmap_file")
+//int BPF_PROG(mmap_file, struct file *file, unsigned long reqprot,unsigned long prot, unsigned long flags)
+//{
+//
+//    u32 pid = bpf_get_current_pid_tgid();
+//    //only monitor process triggered by SSH session
+//    struct process_t *process = get_process(pid);
+//    if(!process){
+//        return 0;
+//    }
+//
+//    if(!file)
+//    {
+//        return 0;
+//    }
+//
+//    struct inode *inode = file->f_inode;
+//
+//    enum fs_access_t access = prot_mask_to_access(prot, (flags & MAP_TYPE) == MAP_SHARED);
+//
+//    if(!access)
+//    {
+//        return 0;
+//    }
+//
+//    enum action_t action = fs_policy_decision(inode,access,file->);
+//    audit_fs(pid,action,inode,access);
+//
+//    return action & ACTION_DENY ? -EPERM : 0;
+//}
+//
+//
+//SEC("lsm/file_mprotect")
+//int BPF_PROG(file_mprotect, struct vm_area_struct *vma, unsigned long reqprot,
+//                       unsigned long prot)
+//{
+//    u32 pid = bpf_get_current_pid_tgid();
+//    //only monitor process triggered by SSH session
+//    struct process_t *process = get_process(pid);
+//    if(!process){
+//        return 0;
+//    }
+//
+//    if (!vma) {
+//            return 0;
+//        }
+//
+//    struct file *file = vma->vm_file;
+//
+//    struct inode *inode = file->f_inode;
+//
+//    enum fs_access_t access = prot_mask_to_access(prot, vma->vm_flags & VM_SHARED);
+//
+//    if(!access)
+//    {
+//        return 0;
+//    }
+//
+//    enum action_t action = fs_policy_decision(inode,access);
+//    audit_fs(pid,action,inode,access);
+//
+//    return action & ACTION_DENY ? -EPERM : 0;
+//}
 
 /* ========================================================================= *
  * Network Policy                                                            *

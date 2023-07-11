@@ -128,6 +128,8 @@ impl Conf {
 
     pub fn load_fsprofiles<'a>(&self, rules: &[FilesystemRule], skel: &mut Skel) -> Result<()> {
         for rule in rules.iter() {
+            let pathName = &rule.pathname;
+
             let (st_dev, st_ino) = path_to_dev_ino(&PathBuf::from(&rule.pathname))
                 .context(format!("Failed to get information for {}", &rule.pathname))?;
             let profile_key: u64 = calculate_profile_key(st_ino, st_dev);

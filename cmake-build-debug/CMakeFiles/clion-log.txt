@@ -1,3 +1,4 @@
-/home/yuan/下载/clion-2022.2.5/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/yuan/work/ESX-Extended-Security-boX
-/home/yuan/下载/clion-2022.2.5/bin/cmake/linux/bin/cmake: 1: ELF: not found
-/home/yuan/下载/clion-2022.2.5/bin/cmake/linux/bin/cmake: 2: Syntax error: ")" unexpected
+/opt/clion/clion-2022.2.5/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" -S /home/yuan/work/ESX-Extended-Security-boX -B /home/yuan/work/ESX-Extended-Security-boX/cmake-build-debug
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/yuan/work/ESX-Extended-Security-boX/cmake-build-debug

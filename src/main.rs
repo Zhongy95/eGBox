@@ -140,8 +140,8 @@ fn main() -> Result<()> {
 
 fn bump_memlock_rlimit() -> Result<()> {
     let rlimit = libc::rlimit {
-        rlim_cur: 128 << 20,
-        rlim_max: 128 << 20,
+        rlim_cur: 128 << 21,
+        rlim_max: 128 << 21,
     };
 
     if unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlimit) } != 0 {
