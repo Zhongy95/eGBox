@@ -97,16 +97,41 @@ pub struct FilesystemRule {
     pub(crate) action: SingleOrVec<String>,
 }
 
+
+
 impl LoadRule for FilesystemRule {
     fn key(&self, config: &Conf, uid: u32) -> Result<Vec<u8>> {
         //Look up the device ID of the filesystem
-        let (st_dev, st_ino) =(0,0);
+        let (mut st_dev,mut st_ino) =(0,0);
         if &self.pathname == "/*"{
-            let (st_dev, st_ino) =(0,0);
+             (st_dev, st_ino) =(0,0);
+        }else if self.pathname.ends_with("/*"){
+            let path_without_suffix = &self.pathname.replace("/*","");
+            match path_to_dev_ino(&PathBuf::from(path_without_suffix)){
+                Ok((dev,ino)) => {(st_dev, st_ino) = (dev,ino);},
+                Err(e)=>{
+                    return Err(e);
+                }
+            }
+        } else if self.pathname.ends_with("/"){
+            let path_without_suffix = &self.pathname.replace("/","");
+            match path_to_dev_ino(&PathBuf::from(path_without_suffix)){
+                Ok((dev,ino)) => {(st_dev, st_ino) = (dev,ino);},
+                Err(e)=>{
+                    return Err(e);
+                }
+            }
+        } else if self.pathname.ends_with("/**") {
+            let path_without_suffix = &self.pathname.replace("/**","");
+            match path_to_dev_ino(&PathBuf::from(path_without_suffix)){
+                Ok((dev,ino)) => {(st_dev, st_ino) = (dev,ino);},
+                Err(e)=>{
+                    return Err(e);
+                }
+            }
         }else{
-
             match path_to_dev_ino(&PathBuf::from(&self.pathname)){
-                Ok((dev,ino)) => {let (st_dev, st_ino) = (dev,ino);},
+                Ok((dev,ino)) => {(st_dev, st_ino) = (dev,ino);},
                 Err(e)=>{
                     return Err(e);
                 }
@@ -150,6 +175,44 @@ impl LoadRule for FilesystemRule {
 
     fn map<'a: 'a>(&self, maps: &'a mut BpfESXMapsMut) -> &'a mut Map {
         maps.fs_policies()
+    }
+
+    fn load<'a: 'a>(
+        &self,
+        config: &Conf,
+        uid: u32,
+        skel: &'a mut Skel,
+        decision: &PolicyDecision,
+    ) -> Result<()> {
+        let mut key;
+        match self.key(&config, uid){
+            Ok(key_s) => {key = key_s;},
+            Err(e)=>{return Err(e)}
+        }
+        let key = &mut self.key(&config, uid).unwrap();
+        println!("load key :{:?}",key);
+        let value = &mut self
+            .value(&decision)
+            .context("Failed to create map value")?;
+
+        let mut maps = skel.maps_mut();
+        if let Some(existing) = self.lookup_existing_value(key, &mut maps)? {
+            for (old, new) in existing.iter().zip(value.iter_mut()) {
+                *new |= *old;
+            }
+        }
+
+        //update the actual map value
+
+        let mut map = self.map(&mut maps);
+        if self.pathname.ends_with("/*") || self.pathname.ends_with("/**") || self.pathname.ends_with("/"){
+            map = maps.fs_dir_policies();
+            // maps.fs_dir_policies();
+        }
+        map.update(key, value, MapFlags::ANY)
+            .context("Failed to update map value")?;
+
+        Ok(())
     }
 }
 
