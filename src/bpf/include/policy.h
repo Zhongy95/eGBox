@@ -120,6 +120,7 @@ struct policy_t
     access_t allow;
     access_t taint;
     access_t audit;
+    access_t deny;
 };
 
 //=======

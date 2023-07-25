@@ -227,6 +227,9 @@ impl Conf {
                         "taint" => {
                             rule.load(self, uid, skel, &PolicyDecision::Taint);
                         }
+                        "deny"=>{
+                            rule.load(self,uid,skel,&PolicyDecision::Deny);
+                        }
                         _ => {}
                     }
                 }

@@ -168,6 +168,9 @@ impl LoadRule for FilesystemRule {
                 println!("value.audit = {}", access.bits());
                 value.audit = access.bits()
             }
+            PolicyDecision::Deny => {
+                value.deny = access.bits()
+            }
         }
 
         Ok(unsafe { as_bytes(&value).into() })
@@ -299,6 +302,9 @@ impl LoadRule for NetRule {
                 println!("value.audit = {}", access.bits());
                 value.audit = access.bits()
             }
+            PolicyDecision::Deny => {
+                value.deny = access.bits()
+            }
         }
 
         Ok(unsafe { as_bytes(&value).into() })
@@ -316,6 +322,7 @@ pub enum PolicyDecision {
     Audit,
     Allow,
     Taint,
+    Deny,
 }
 
 impl From<PolicyDecision> for bitflags::PolicyDecision {
@@ -324,6 +331,7 @@ impl From<PolicyDecision> for bitflags::PolicyDecision {
             PolicyDecision::Audit => Self::AUDIT,
             PolicyDecision::Allow => Self::ALLOW,
             PolicyDecision::Taint => Self::TAINT,
+            PolicyDecision::Deny => Self::DENY,
         }
     }
 }
