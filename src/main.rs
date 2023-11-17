@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: GPL-2
-//
-// Copyright (C) 2021  William Findlay
-//
-// Jan. 19, 2021  William Findlay  Created this.
+
 
 use core::time::Duration;
 use chrono::prelude::*;
@@ -105,7 +102,7 @@ fn main() -> Result<()> {
     config.load(&mut skel);
     // Place this process into a BPFContain container
 
-    attach_uprobes(&mut skel).context("Failed to attach uprobes")?;
+    // attach_uprobes(&mut skel).context("Failed to attach uprobes")?;
     // match config.containerize() {
     //     Ok(_) => {}
     //     Err(err) => panic!("Failed to containerize: {:?}", err),

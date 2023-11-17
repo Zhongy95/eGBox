@@ -979,7 +979,6 @@ int BPF_PROG(inode_unlink,  struct inode *dir, struct dentry *dentry)
     struct inode *inode = dentry->d_inode;
     
     action = fs_policy_decision( inode, FS_DELETE,dentry);
-//    audit_fs(pid, action, inode, FS_DELETE);
 
     enum fs_access_t access = FS_DELETE;
 
@@ -1066,6 +1065,116 @@ int BPF_PROG(inode_getattr,struct path *path)
     return action & ACTION_DENY ? -EPERM :0;
 }
 
+
+
+
+/* Access to create a file under the path. */
+SEC("lsm/path_mknod")
+int BPF_PROG(path_mknod, const struct path *dir, struct dentry *dentry,
+             umode_t mode, unsigned int dev)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+
+    struct inode *inode = dir->dentry->d_inode;
+
+    enum fs_access_t access = FS_APPEND;
+    enum action_t action = fs_policy_decision(inode,access,dir->dentry);
+
+
+    audit_fs1(pid,action,dir->dentry,access);
+
+
+    return action & ACTION_DENY ? -EPERM :0;
+}
+
+/* Access to make a dir under the path. */
+SEC("lsm/path_mkdir")
+int BPF_PROG(path_mkdir, const struct path *dir, struct dentry *dentry)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+
+    struct inode *inode = dir->dentry->d_inode;
+
+    enum fs_access_t access = FS_APPEND;
+    enum action_t action = fs_policy_decision(inode,access,dir->dentry);
+
+
+    audit_fs1(pid,action,dir->dentry,access);
+
+
+    return action & ACTION_DENY ? -EPERM :0;
+}
+
+/* Access to make a symlink under the path. */
+SEC("lsm/path_symlink")
+int BPF_PROG(path_symlink, const struct path *dir, struct dentry *dentry,const char *old_name)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+
+    struct inode *inode = dir->dentry->d_inode;
+
+    enum fs_access_t access = FS_APPEND;
+    enum action_t action = fs_policy_decision(inode,access,dir->dentry);
+
+
+    audit_fs1(pid,action,dir->dentry,access);
+
+
+    return action & ACTION_DENY ? -EPERM :0;
+}
+
+/* Access to make a hard link under the path. */
+SEC("lsm/path_link")
+int BPF_PROG(path_link, struct dentry *old_dentry, const struct path *new_dir,
+             struct dentry *new_dentry)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+
+    struct inode *inode = old_dentry->d_inode;
+
+    // determine path append
+    enum fs_access_t access = FS_APPEND;
+    enum action_t action = fs_policy_decision(inode,access,new_dir->dentry);
+    audit_fs1(pid,action,new_dir->dentry,access);
+    if (action & ACTION_DENY){
+        return -EPERM;
+    }
+
+
+
+    // determine inode link
+    access = FS_LINK;
+    action = fs_policy_decision(old_dentry->d_inode,access,old_dentry);
+    audit_fs1(pid,action,old_dentry,access);
+
+
+
+    return action & ACTION_DENY ? -EPERM :0;
+}
 
 
 
