@@ -1176,7 +1176,79 @@ int BPF_PROG(path_link, struct dentry *old_dentry, const struct path *new_dir,
     return action & ACTION_DENY ? -EPERM :0;
 }
 
+/* Access to rename a file or path. */
+SEC("lsm/path_rename")
+int BPF_PROG(path_rename, const struct path *old_dir, struct dentry *old_dentry,
+             const struct path *new_dir, struct dentry *new_dentry)
+{
+    u32 pid = bpf_get_current_pid_tgid();
 
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+
+    // determine path delete
+    enum fs_access_t access = FS_DELETE;
+    enum action_t action = fs_policy_decision(old_dentry->d_inode,access,old_dentry);
+    audit_fs1(pid,action,old_dentry,access);
+    if (action & ACTION_DENY){
+        return -EPERM;
+    }
+
+
+
+    // determine the path append
+    access = FS_APPEND;
+    action = fs_policy_decision(new_dir->dentry->d_inode,access,new_dir->dentry);
+    audit_fs1(pid,action,new_dir->dentry,access);
+
+
+
+    return action & ACTION_DENY ? -EPERM :0;
+}
+
+
+/* Access to truncate a file. */
+SEC("lsm/path_truncate")
+int BPF_PROG(path_truncate, const struct path *path)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+
+    enum fs_access_t access = FS_WRITE;
+    enum action_t action = fs_policy_decision(path->dentry->d_inode,access,path->dentry);
+    audit_fs1(pid,action,path->dentry,access);
+
+
+    return action & ACTION_DENY? -EPERM :0;
+}
+
+/* Access to chmod a file or a directory. */
+SEC("lsm/path_chmod")
+int BPF_PROG(path_chmod, const struct path *path)
+{
+    u32 pid = bpf_get_current_pid_tgid();
+
+    //only monitor process triggered by SSH session
+    struct process_t *process = get_process(pid);
+    if(!process){
+        return 0;
+    }
+    enum fs_access_t access = FS_CHMOD;
+    enum action_t action = fs_policy_decision(path->dentry->d_inode,access,path->dentry);
+    audit_fs1(pid,action,path->dentry,access);
+
+
+    return action & ACTION_DENY? -EPERM :0;
+
+}
 
 
 
