@@ -457,7 +457,7 @@ int sched_process_fork(struct bpf_raw_tracepoint_args *args){
 
     //Create child process
     struct process_t *process;
-    bpf_printk("fork, parent:%d,child:%d",ppid,cpid);
+//    bpf_printk("fork, parent:%d,child:%d",ppid,cpid);
     u32 uid = bpf_get_current_uid_gid();
 
     process = create_process(cpid,ctgid,uid,parent_process->config_id,parent_process->tainted);

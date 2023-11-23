@@ -102,7 +102,7 @@ fn main() -> Result<()> {
     config.load(&mut skel);
     // Place this process into a BPFContain container
 
-    // attach_uprobes(&mut skel).context("Failed to attach uprobes")?;
+    attach_uprobes(&mut skel).context("Failed to attach uprobes")?;
     // match config.containerize() {
     //     Ok(_) => {}
     //     Err(err) => panic!("Failed to containerize: {:?}", err),
@@ -165,8 +165,9 @@ fn parse_config(file_path: &str) -> Conf {
     println!("profile:{}", profile);
     let fs = &config2.fs;
     let net = &config2.net;
-
+    let mut ruleNum = 0;
     if let Some(ref fs) = fs {
+        ruleNum += fs.len();
         for x in fs {
             println!("{:?}", x);
         }
@@ -175,10 +176,13 @@ fn parse_config(file_path: &str) -> Conf {
     }
 
     if let Some(ref net) = net {
+        ruleNum += net.len();
         for x in net {
             println!("{:?}", x);
         }
     }
+
+    println!("The number of rules:{}",ruleNum);
 
     // let netPolicy = &config.net;
     // if let Some(ref netPolicy) = netPolicy{
