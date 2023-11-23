@@ -180,27 +180,50 @@ impl Conf {
             // }
             let mut actionvec: Vec<_> = rule.action.clone().into();
             let mut uidvec: Vec<_> = rule.uid.clone().into();
-            for uid  in &uidvec {
-                let uid = *uid as u32;
-                println!("uid : {}",uid,);
+            let mut gidvec:Vec<_> = rule.gid.clone().into();
+            if (uidvec.len() ==1 && gidvec.len() ==1) &&(uidvec[0]==-1){
+                // grant a group privilege
+                let gid = gidvec[0] as u32;
                 for decision in &actionvec {
                     println!("decision:{}",decision);
                     match decision.as_ref() {
                         "audit" => {
-                            rule.load(self, uid, skel, &PolicyDecision::Audit);
+                            rule.load(self, gid, skel, &PolicyDecision::Audit,true);
                         }
                         "allow" => {
-                            println!("allow loading,uid={}",uid);
-                            rule.load(self, uid, skel, &PolicyDecision::Allow);
-                            println!("allow load,uid={}",uid);
+                            rule.load(self, gid, skel, &PolicyDecision::Allow,true);
+
                         }
                         "taint" => {
-                            rule.load(self, uid, skel, &PolicyDecision::Taint);
+                            rule.load(self, gid, skel, &PolicyDecision::Taint,true);
                         }
                         _ => {}
                     }
                 }
+            }else{
+                for uid  in &uidvec {
+                    let uid = *uid as u32;
+                    println!("uid : {}",uid,);
+                    for decision in &actionvec {
+                        println!("decision:{}",decision);
+                        match decision.as_ref() {
+                            "audit" => {
+                                rule.load(self, uid, skel, &PolicyDecision::Audit,false);
+                            }
+                            "allow" => {
+                                println!("allow loading,uid={}",uid);
+                                rule.load(self, uid, skel, &PolicyDecision::Allow,false);
+                                println!("allow load,uid={}",uid);
+                            }
+                            "taint" => {
+                                rule.load(self, uid, skel, &PolicyDecision::Taint,false);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
+
 
             //rule.load(self, skel, &decision.clone());
         }
@@ -213,27 +236,51 @@ impl Conf {
             // }
             let netvec: Vec<_> = rule.action.clone().into();
             let uidvec: Vec<_> = rule.uid.clone().into();
-            for uid in uidvec {
-                let uid = uid as u32;
-
+            let mut gidvec:Vec<_> = rule.gid.clone().into();
+            if (uidvec.len() ==1 && gidvec.len() ==1) &&(uidvec[0]==-1){
+                let gid = gidvec[0] as u32;
                 for decision in &netvec {
                     match decision.as_ref() {
                         "audit" => {
-                            rule.load(self, uid, skel, &PolicyDecision::Audit);
+                            rule.load(self, gid, skel, &PolicyDecision::Audit,true);
                         }
                         "allow" => {
-                            rule.load(self, uid, skel, &PolicyDecision::Allow);
+                            rule.load(self, gid, skel, &PolicyDecision::Allow,true);
                         }
                         "taint" => {
-                            rule.load(self, uid, skel, &PolicyDecision::Taint);
+                            rule.load(self, gid, skel, &PolicyDecision::Taint,true);
                         }
                         "deny"=>{
-                            rule.load(self,uid,skel,&PolicyDecision::Deny);
+                            rule.load(self,gid,skel,&PolicyDecision::Deny,true);
                         }
                         _ => {}
                     }
                 }
+
+            }else{
+                for uid in uidvec {
+                    let uid = uid as u32;
+
+                    for decision in &netvec {
+                        match decision.as_ref() {
+                            "audit" => {
+                                rule.load(self, uid, skel, &PolicyDecision::Audit,false);
+                            }
+                            "allow" => {
+                                rule.load(self, uid, skel, &PolicyDecision::Allow,false);
+                            }
+                            "taint" => {
+                                rule.load(self, uid, skel, &PolicyDecision::Taint,false);
+                            }
+                            "deny"=>{
+                                rule.load(self,uid,skel,&PolicyDecision::Deny,false);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
+
 
             //rule.load(self, skel, &decision.clone());
         }

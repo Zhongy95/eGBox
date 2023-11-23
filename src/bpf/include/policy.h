@@ -45,16 +45,22 @@ typedef enum action_t
 
 
 /**
- * fs_policy_key - Key into the filesystem policy map
+ * fs_policy_key - User-Key into the filesystem policy map
  * @config_id: The config id of this config
  * @device_id: The device id of the filesystem
+ * @uid: The id of user
  */
  struct fs_policy_key{
     u32 config_id;
     u32 uid;
     u64 device_id;
     u64 profile_key;
-
+};
+struct fs_policy_key_group{
+    u32 config_id;
+    u32 gid;
+    u64 device_id;
+    u64 profile_key;
 };
 
 struct file_policy_key{

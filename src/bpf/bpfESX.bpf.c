@@ -51,10 +51,10 @@ struct
 struct
 {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(key_size, sizeof(struct fs_policy_key));
+    __uint(key_size, sizeof(struct fs_policy_key_group));
     __uint(value_size, sizeof(struct policy_t));
     __uint(max_entries, MAX_POLICY_SIZE);
-} fs_dir_policies SEC(".maps");
+} fs_group_policies SEC(".maps");
 
 struct
 {
@@ -63,6 +63,14 @@ struct
     __uint(value_size, sizeof(struct policy_t));
     __uint(max_entries, MAX_POLICY_SIZE);
 } net_policies SEC(".maps");
+
+struct
+{
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(key_size, sizeof(struct net_policy_key_group));
+    __uint(value_size, sizeof(struct policy_t));
+    __uint(max_entries, MAX_POLICY_SIZE);
+} net_group_policies SEC(".maps");
 
 
 
@@ -593,24 +601,24 @@ static __always_inline struct fs_policy_key create_fs_policy_key(struct inode *i
     return key;
 }
 
-static __always_inline enum action_t fs_dir_policy_decision(enum fs_access_t access,struct dentry *dent)
-{
-    struct dentry *dir_dent = dent->d_parent;
-    struct inode* dir_inode = dir_dent->d_inode;
-    struct fs_policy_key key = create_fs_policy_key(dir_inode);
-    struct policy_t *dir_fs_policy = bpf_map_lookup_elem(&fs_dir_policies,&key);
-    // if dir is added, then return result
-    if (dir_fs_policy){
-        return policy_decision(dir_fs_policy,access);
-    }
-
-    if (dir_dent == dent){
-        // already loop to root
-        return 0;
-    }
-
-    return 0;
-}
+//static __always_inline enum action_t fs_dir_policy_decision(enum fs_access_t access,struct dentry *dent)
+//{
+//    struct dentry *dir_dent = dent->d_parent;
+//    struct inode* dir_inode = dir_dent->d_inode;
+//    struct fs_policy_key key = create_fs_policy_key(dir_inode);
+//    struct policy_t *dir_fs_policy = bpf_map_lookup_elem(&fs_dir_policies,&key);
+//    // if dir is added, then return result
+//    if (dir_fs_policy){
+//        return policy_decision(dir_fs_policy,access);
+//    }
+//
+//    if (dir_dent == dent){
+//        // already loop to root
+//        return 0;
+//    }
+//
+//    return 0;
+//}
 
 static __always_inline enum action_t fs_policy_decision(struct inode *inode, enum fs_access_t access,struct dentry *dent)
 {
@@ -622,21 +630,21 @@ static __always_inline enum action_t fs_policy_decision(struct inode *inode, enu
     }
 
     // check directory privileged
-    int dir_len = 64;
-    enum action_t dir_action = ACTION_NONE;
-    do{
-        dir_action = fs_dir_policy_decision(access,dent);
-        if(dir_action != ACTION_NONE){
-            return dir_action;
-        }
-        dent = dent->d_parent;
-        dir_len --;
-    }while (dir_len >=0 && dent->d_parent !=dent);
-
-    dir_action = fs_dir_policy_decision(access,dent);
-    if(dir_action != ACTION_NONE){
-        return dir_action;
-    }
+//    int dir_len = 64;
+//    enum action_t dir_action = ACTION_NONE;
+//    do{
+//        dir_action = fs_dir_policy_decision(access,dent);
+//        if(dir_action != ACTION_NONE){
+//            return dir_action;
+//        }
+//        dent = dent->d_parent;
+//        dir_len --;
+//    }while (dir_len >=0 && dent->d_parent !=dent);
+//
+//    dir_action = fs_dir_policy_decision(access,dent);
+//    if(dir_action != ACTION_NONE){
+//        return dir_action;
+//    }
 
     u64 profile_keyt = calculate_profile_key((u64)(inode->i_ino),(u64)(new_encode_dev(inode->i_sb->s_dev)
                                                                                                     ));
@@ -655,13 +663,14 @@ static __always_inline enum action_t fs_policy_decision(struct inode *inode, enu
 //    };
     s32 topuid = -1;
     u32 u_topuid = (u32)topuid;
-    struct fs_policy_key keyal = {
+    // case of uid = -1
+    struct fs_policy_key_group keyal = {
             .config_id= config_id,
+            .gid = u_topuid,
             .device_id = (u64)(new_encode_dev(inode->i_sb->s_dev)),
             .profile_key = profile_keyt,
-            .uid = u_topuid,
     };
-
+    // case of path = /*
     struct fs_policy_key key_all_path = {
         .config_id= config_id,
         .device_id = (u64)profile_key_all,
@@ -671,24 +680,42 @@ static __always_inline enum action_t fs_policy_decision(struct inode *inode, enu
 
 
     struct policy_t *policy = bpf_map_lookup_elem(&fs_policies, &key);
-    struct policy_t *top_policy = bpf_map_lookup_elem(&fs_policies,&keyal);
+    struct policy_t *top_policy = bpf_map_lookup_elem(&fs_group_policies,&keyal);
     struct policy_t *policy_all_path = bpf_map_lookup_elem(&fs_policies,&key_all_path);
     if(top_policy)
     {
-        bpf_printk("top_fs_policy_key existed , profile_key:%d,dev_id:%d",profile_keyt,(u64)(new_encode_dev(inode->i_sb->s_dev)));
+//        bpf_printk("top_fs_policy_key existed , profile_key:%d,dev_id:%d",profile_keyt,(u64)(new_encode_dev(inode->i_sb->s_dev)));
         return policy_decision(top_policy,access);
     }else if (policy_all_path){
         return policy_decision(policy_all_path,access);
     }
-    if(!policy)
-    {
-//        enum action_t deny_action = ACTION_DENY;
-        return 0;
+
+    if (!policy){
+        struct fs_policy_key_group key_group = {
+                .config_id= config_id,
+                .device_id = (u64)(new_encode_dev(inode->i_sb->s_dev)),
+                .profile_key = profile_keyt,
+                .gid = gid,
+        };
+        struct policy_t *group_policy = bpf_map_lookup_elem(&fs_group_policies,&key_group);
+        if (!group_policy){
+            return ACTION_ALLOW;
+            return ACTION_DENY;
+
+        }else{
+            return policy_decision(group_policy,access);
+        }
     }
-    else{
-//        bpf_printk("fs_policy_key existed , profile_key:%d,dev_id:%d",profile_keyt,(u64)(new_encode_dev(inode->i_sb->s_dev)));
-//        bpf_printk("policy.allow : %x,policy.audit : %x",policy->allow,policy->audit);
-    }
+
+//    if(!policy)
+//    {
+////        enum action_t deny_action = ACTION_DENY;
+//        return 0;
+//    }
+//    else{
+////        bpf_printk("fs_policy_key existed , profile_key:%d,dev_id:%d",profile_keyt,(u64)(new_encode_dev(inode->i_sb->s_dev)));
+////        bpf_printk("policy.allow : %x,policy.audit : %x",policy->allow,policy->audit);
+//    }
     return policy_decision(policy, access);
 }
 static __always_inline void get_fullpath_dent(struct dentry *dent)
@@ -1512,34 +1539,34 @@ static __always_inline enum action_t net_www_perm(u32 pid , enum net_operation_t
 //    bpf_printk("net rule activated created,access opA %d",access);
     enum action_t decision = ACTION_NONE;
 
-    struct net_policy_key key = {};
+    struct net_policy_key key = {
+            .config_id = config_id,
+            .uid = bpf_get_current_uid_gid() >> 32
+    };
 
-    key.config_id = config_id;
 
     enum action_t allow_action = ACTION_ALLOW;
 
     struct policy_t *policy = bpf_map_lookup_elem(&net_policies, &key);
 
-    if(!policy)
+    if(!policy){
+        struct net_policy_key_group key_group = {
+                .config_id = config_id,
+                .gid = bpf_get_current_uid_gid()
+        };
+        struct policy_t *group_policy = bpf_map_lookup_elem(&net_group_policies,&key_group);
         return 0;
-    else
-    {
 
-        enum action_t action = policy_decision(policy,access);
-//        bpf_printk("net rule activated , policy%d,access opB %d,action %d",policy->audit,access,action);
+        if (group_policy){
+            return policy_decision(group_policy,access);
+        }else{
+            return ACTION_DENY;
+        }
+    }else{
+        return ACTION_ALLOW;
         return policy_decision(policy,access);
         }
 
-
-    // Submit an audit event
-//    audit_data_t *event = alloc_audit_event(
-//        container->policy_id, AUDIT_TYPE_NET,
-//        decision_to_audit_level(decision, container->tainted));
-//    if (event) {
-//        event->net.operation = access;
-//        submit_audit_event(event);
-//    }
-    return 0;
 }
 
 

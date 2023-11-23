@@ -106,6 +106,11 @@ typedef enum net_operation_t{
 
 struct net_policy_key{
     u32 config_id;
+    u32 uid;
+};
+struct net_policy_key_group{
+    u32 config_id;
+    u32 gid;
 };
 
 /**

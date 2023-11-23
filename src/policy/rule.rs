@@ -12,12 +12,13 @@ use crate::policy::{bitflags, keys, values};
 use crate::utils::{calculate_profile_key, path_to_dev_ino, SingleOrVec};
 use plain::as_bytes;
 use std::path::PathBuf;
+use nix::unistd::Gid;
 
 //Load Rule interface
 
 #[enum_dispatch]
 pub trait LoadRule {
-    fn key(&self, config: &Conf, uid: u32) -> Result<Vec<u8>>;
+    fn key(&self, config: &Conf, uid: u32,gid_use:bool) -> Result<Vec<u8>>;
 
     fn value(&self, decision: &PolicyDecision) -> Result<Vec<u8>>;
 
@@ -39,14 +40,15 @@ pub trait LoadRule {
         uid: u32,
         skel: &'a mut Skel,
         decision: &PolicyDecision,
+        gid_use:bool
     ) -> Result<()> {
         println!("load aa uid:{}",uid);
         let mut key;
-        match self.key(&config, uid){
+        match self.key(&config, uid,gid_use){
             Ok(key_s) => {key = key_s;},
             Err(e)=>{return Err(e)}
         }
-        let key = &mut self.key(&config, uid).unwrap();
+        let key = &mut self.key(&config, uid,gid_use).unwrap();
         println!("load key uid:{:?}",key);
         let value = &mut self
             .value(&decision)
@@ -95,12 +97,13 @@ pub struct FilesystemRule {
     pub(crate) uid: SingleOrVec<i32>,
     access: FileAccess,
     pub(crate) action: SingleOrVec<String>,
+    pub(crate) gid: SingleOrVec<i32>,
 }
 
 
 
 impl LoadRule for FilesystemRule {
-    fn key(&self, config: &Conf, uid: u32) -> Result<Vec<u8>> {
+    fn key(&self, config: &Conf, uid: u32,gid_use:bool) -> Result<Vec<u8>> {
         //Look up the device ID of the filesystem
         let (mut st_dev,mut st_ino) =(0,0);
         if &self.pathname == "/*"{
@@ -138,20 +141,31 @@ impl LoadRule for FilesystemRule {
             }
 
         }
-        let uidvec: Vec<_> = self.uid.clone().into();
+        // let uidvec: Vec<_> = self.uid.clone().into();
+
+        if gid_use{
+            let key_group = keys::FsPolicyKeyGroup {
+                config_id: config.config_id() as u32,
+                device_id: st_dev as u64,
+                profile_key: calculate_profile_key(st_ino, st_dev) as u64,
+                gid: uid as u32,
+            };
+            return Ok(unsafe { as_bytes(&key_group).into() });
+        }
 
         let key = keys::FsPolicyKey {
-            config_id: config.config_id() as u32,
-            device_id: st_dev as u64,
-            profile_key: calculate_profile_key(st_ino, st_dev) as u64,
-            uid: uid as u32,
-        };
-        println!(
-            "config_id:{},dev_id:{},profile_key:{},uid:{}",
-            config.config_id(),
-            key.device_id,
-            key.profile_key,uid
-        );
+                config_id: config.config_id() as u32,
+                device_id: st_dev as u64,
+                profile_key: calculate_profile_key(st_ino, st_dev) as u64,
+                uid: uid as u32,
+            };
+
+        // println!(
+        //     "config_id:{},dev_id:{},profile_key:{},uid:{}",
+        //     config.config_id(),
+        //     key.device_id,
+        //     key.profile_key,uid
+        // );
         Ok(unsafe { as_bytes(&key).into() })
     }
     fn value(&self, decision: &PolicyDecision) -> Result<Vec<u8>> {
@@ -186,13 +200,14 @@ impl LoadRule for FilesystemRule {
         uid: u32,
         skel: &'a mut Skel,
         decision: &PolicyDecision,
+        gid_use:bool
     ) -> Result<()> {
         let mut key;
-        match self.key(&config, uid){
+        match self.key(&config, uid,gid_use){
             Ok(key_s) => {key = key_s;},
             Err(e)=>{return Err(e)}
         }
-        let key = &mut self.key(&config, uid).unwrap();
+        let key = &mut self.key(&config, uid,gid_use).unwrap();
         println!("load key :{:?}",key);
         let value = &mut self
             .value(&decision)
@@ -208,10 +223,13 @@ impl LoadRule for FilesystemRule {
         //update the actual map value
 
         let mut map = self.map(&mut maps);
-        if self.pathname.ends_with("/*") || self.pathname.ends_with("/**") || self.pathname.ends_with("/"){
-            map = maps.fs_dir_policies();
-            // maps.fs_dir_policies();
+        if gid_use {
+            map =maps.fs_group_policies();
         }
+        // if self.pathname.ends_with("/*") || self.pathname.ends_with("/**") || self.pathname.ends_with("/"){
+        //     map = maps.fs_dir_policies();
+        //     // maps.fs_dir_policies();
+        // }
         map.update(key, value, MapFlags::ANY)
             .context("Failed to update map value")?;
 
@@ -271,9 +289,19 @@ pub struct NetRule {
 }
 
 impl LoadRule for NetRule {
-    fn key(&self, config: &Conf, uid: u32) -> Result<Vec<u8>> {
+    fn key(&self, config: &Conf, uid: u32,gid_use:bool) -> Result<Vec<u8>> {
+        //group privileged
+        if gid_use {
+            let key_group = keys::NetPolicyKeyGroup {
+                config_id: config.config_id() as u32,
+                gid:uid
+            };
+            return Ok(unsafe { as_bytes(&key_group).into() });
+        }
+
         let key = keys::NetPolicyKey {
             config_id: config.config_id() as u32,
+            uid: uid
         };
         println!("Net rule loaded , config_id:{}", config.config_id());
         Ok(unsafe { as_bytes(&key).into() })
@@ -312,6 +340,44 @@ impl LoadRule for NetRule {
 
     fn map<'a: 'a>(&self, maps: &'a mut BpfESXMapsMut) -> &'a mut Map {
         maps.net_policies()
+    }
+
+    fn load<'a: 'a>(
+        &self,
+        config: &Conf,
+        uid: u32,
+        skel: &'a mut Skel,
+        decision: &PolicyDecision,
+        gid_use:bool
+    ) -> Result<()> {
+        println!("load aa uid:{}",uid);
+        let mut key;
+        match self.key(&config, uid,gid_use){
+            Ok(key_s) => {key = key_s;},
+            Err(e)=>{return Err(e)}
+        }
+        let key = &mut self.key(&config, uid,gid_use).unwrap();
+        println!("load key uid:{:?}",key);
+        let value = &mut self
+            .value(&decision)
+            .context("Failed to create map value")?;
+
+        let mut maps = skel.maps_mut();
+        if let Some(existing) = self.lookup_existing_value(key, &mut maps)? {
+            for (old, new) in existing.iter().zip(value.iter_mut()) {
+                *new |= *old;
+            }
+        }
+
+        //update the actual map value
+        let mut map = self.map(&mut maps);
+        if gid_use{
+            map = maps.net_group_policies();
+        }
+        map.update(key, value, MapFlags::ANY)
+            .context("Failed to update map value")?;
+
+        Ok(())
     }
 }
 

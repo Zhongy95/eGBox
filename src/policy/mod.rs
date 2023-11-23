@@ -14,6 +14,8 @@ pub mod keys {
     /// Represents a per-filesystem policy key on the BPF side.
     pub type FsPolicyKey = raw::fs_policy_key;
     unsafe impl Plain for FsPolicyKey {}
+    pub type FsPolicyKeyGroup = raw::fs_policy_key_group;
+    unsafe impl Plain for FsPolicyKeyGroup {}
 
     pub type ProcfsPolicyKey = raw::procfs_policy_key_t;
     unsafe impl Plain for ProcfsPolicyKey {}
@@ -21,6 +23,8 @@ pub mod keys {
     /// Represents a network policy key on the BPF side.
     pub type NetPolicyKey = raw::net_policy_key;
     unsafe impl Plain for NetPolicyKey {}
+    pub type NetPolicyKeyGroup = raw::net_policy_key_group;
+    unsafe impl Plain for NetPolicyKeyGroup {}
 }
 
 pub mod values {
