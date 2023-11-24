@@ -38,12 +38,12 @@ pub fn configure(log_level: LevelFilter, log_file:Option<&str>) ->Result<()>{
 
 
     // Log to stderr
-    let stderr = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{h([{l}])}: {m}\n")))
-        .target(Target::Stderr)
-        .build();
-    let config_builder =
-        config_builder.appender(Appender::builder().build("stderr", Box::new(stderr)));
+    // let stderr = ConsoleAppender::builder()
+    //     .encoder(Box::new(PatternEncoder::new("{h([{l}])}: {m}\n")))
+    //     .target(Target::Stderr)
+    //     .build();
+    // let config_builder =
+    //     config_builder.appender(Appender::builder().build("stderr", Box::new(stderr)));
 
     // Log to file
     let config_builder = match log_file {
@@ -75,8 +75,8 @@ pub fn configure(log_level: LevelFilter, log_file:Option<&str>) ->Result<()>{
 
 
     // Configure root logger
-    let root_builder = Root::builder().appender("stderr");
-    // let root_builder = Root::builder();
+    // let root_builder = Root::builder().appender("stderr");
+    let root_builder = Root::builder();
     let root_builder = match log_file {
         Some(_) => root_builder.appender("file"),
         None => root_builder,
