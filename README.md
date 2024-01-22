@@ -20,3 +20,6 @@ CONFIG_LSM="bpf"
 ```
 ## Start
 `sudo cargo run daemon start`
+
+## Audit mode
+`sudo cargo run daemon --audit start  `

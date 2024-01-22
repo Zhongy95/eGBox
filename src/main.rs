@@ -46,11 +46,6 @@ fn main() -> Result<()> {
                 .validator(path_validator)
                 .help("Use a different config file"),
         )
-        .arg(
-            Arg::with_name("a").long("audit")
-                .takes_value(false)
-                .help("if audit mode is on, default off"),
-        )
         .subcommand(
             SubCommand::with_name("daemon")
                 .about("Control Esx daemon")
@@ -59,6 +54,10 @@ fn main() -> Result<()> {
                     SubCommand::with_name("start")
                         .about("Start the daemon")
                         .display_order(1),
+                ).arg(
+                    Arg::with_name("audit").short("a").long("audit")
+                    .takes_value(false)
+                    .help("if audit mode is on, default off"),
                 )
         )
         .subcommand(
@@ -76,8 +75,12 @@ fn main() -> Result<()> {
     // //Initialize config
     //
     // //Dispatch to sub command
+    let mut audit_mode:bool = false;
     match args.subcommand() {
-        ("daemon", Some(args)) => daemon::main(args),
+        ("daemon", Some(args)) => {
+            audit_mode = args.is_present("audit");
+            daemon::main(args)
+        },
         ("minner", Some(args)) => minner::main(args),
         (unknown, _) => bail!("Unkown subcommand {}",unknown),
     }.expect("TODO: panic message");
@@ -99,7 +102,7 @@ fn main() -> Result<()> {
 
     bump_memlock_rlimit()?;
 
-    let audit_mode:bool = args.is_present("a");
+
     println!("Audit mode is {}",audit_mode);
     
     let open_skel = skel_builder.open()?;
