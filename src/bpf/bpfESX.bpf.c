@@ -277,8 +277,11 @@ static __always_inline struct process_t *get_current_process()
 
 static __always_inline enum action_t policy_decision(struct policy_t *policy,
     u32 access)
-{
-    return ACTION_ALLOW;
+{   
+    if (audit_mode){
+        return ACTION_ALLOW;
+    }
+    
     // Set deny action based on whether or not we are enforcing
 // #ifndef BPFBOX_ENFORCING
     enum action_t deny_action = ACTION_DENY;

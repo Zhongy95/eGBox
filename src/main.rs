@@ -46,6 +46,11 @@ fn main() -> Result<()> {
                 .validator(path_validator)
                 .help("Use a different config file"),
         )
+        .arg(
+            Arg::with_name("a").long("audit")
+                .takes_value(false)
+                .help("if audit mode is on, default off"),
+        )
         .subcommand(
             SubCommand::with_name("daemon")
                 .about("Control Esx daemon")
@@ -93,10 +98,18 @@ fn main() -> Result<()> {
     //skel_builder.obj_builder.debug(true);
 
     bump_memlock_rlimit()?;
+
+    let audit_mode:bool = args.is_present("a");
+    println!("Audit mode is {}",audit_mode);
+    
     let open_skel = skel_builder.open()?;
 
     let mut skel = open_skel.load().context("failed to open")?;
 
+    if audit_mode{
+        skel.bss().audit_mode = 1;
+    }
+    
     skel.attach().context("failed to attach")?;
 
     config.load(&mut skel);
