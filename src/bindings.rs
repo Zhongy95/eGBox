@@ -1,8 +1,4 @@
 // SPDX-License-Identifier: GPL-2
-//
-// Copyright (C) 2021  William Findlay
-//
-// Jan. 19, 2021  William Findlay  Created this.
 
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
