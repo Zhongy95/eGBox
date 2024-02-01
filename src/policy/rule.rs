@@ -224,12 +224,21 @@ impl LoadRule for FilesystemRule {
 
         let mut map = self.map(&mut maps);
         if gid_use {
-            map =maps.fs_group_policies();
+            if self.pathname.ends_with("/*") || self.pathname.ends_with("/**") || self.pathname.ends_with("/"){
+                map = maps.fs_dir_group_policies();
+            }else{
+                map =maps.fs_group_policies();
+            }
+
+        }else{
+            if self.pathname.ends_with("/*") || self.pathname.ends_with("/**") || self.pathname.ends_with("/"){
+                map = maps.fs_group_policies();
+            }else {
+                map = maps.fs_policies();
+            }
+
         }
-        // if self.pathname.ends_with("/*") || self.pathname.ends_with("/**") || self.pathname.ends_with("/"){
-        //     map = maps.fs_dir_policies();
-        //     // maps.fs_dir_policies();
-        // }
+
         map.update(key, value, MapFlags::ANY)
             .context("Failed to update map value")?;
 

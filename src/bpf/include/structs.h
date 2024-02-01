@@ -62,7 +62,7 @@ typedef enum fs_access_t
 
 #define DNAME_INLINE_LEN 32 /* 192 bytes */
 struct path_t{
-    u8 fullpath[512];
+    u8 fullpath[256];
     unsigned int pathsize;
     u64 st_ino;
     u64 st_dev;
