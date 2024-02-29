@@ -116,7 +116,7 @@ fn main() -> Result<()> {
     skel.attach().context("failed to attach")?;
 
     config.load(&mut skel);
-    // Place this process into a BPFContain container
+    
 
     attach_uprobes(&mut skel).context("Failed to attach uprobes")?;
     // match config.containerize() {
