@@ -1,4 +1,4 @@
-# Extended Security boX 
+# eGBOx
 
 Improve the security of your system by restricting the systemcall.
  
